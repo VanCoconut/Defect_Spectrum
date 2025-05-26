@@ -230,10 +230,10 @@ class Trainer:
         if get_rank() == 0:
 
             torchvision.utils.save_image(
-                gathered_img, 
-                f'{self.sample_dir}samples_img_{img_name}.png',
-                normalize=True, range=(-1, 1), nrow=self.max_images
-                )
+              gathered_img, 
+              f'{self.sample_dir}samples_img_{img_name}.png',
+              normalize=True, value_range=(-1, 1), nrow=self.max_images
+            )
             
             for i in range(batch):
                 rgb_mask = self.semantic_mask_to_rgb(argmax_depth[i].cpu().numpy())
