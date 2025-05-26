@@ -40,8 +40,8 @@ optimizer:
     weight_decay: 0.002
 
 train:
-  iterations: 160000
-  log_image_interval: 10000
-  save_ckpt_interval: 10000
+  iterations: 16000
+  log_image_interval: 1000
+  save_ckpt_interval: 1000
   max_images: 8
   eval_interval: 10
