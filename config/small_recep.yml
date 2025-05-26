@@ -30,7 +30,7 @@ data:
   bs_per_gpu: 2
   num_workers: 1
   params:
-    dir:  /content/data
+    dir:  /kaggle/input/solobuchi
     resolution: 256
     num_image_train: 50
 
