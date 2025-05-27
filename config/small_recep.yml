@@ -9,8 +9,8 @@ model:
   target: models.unet.unet_receptive.UNetModel
   params:
     image_size: 256
-    in_channels: 6
-    out_channels: 6
+    in_channels: 4
+    out_channels: 4
     model_channels: 192
     #dropout: 0.3
     # attention_downsample:
@@ -40,8 +40,8 @@ optimizer:
     weight_decay: 0.002
 
 train:
-  iterations: 1600
-  log_image_interval: 100
-  save_ckpt_interval: 100
+  iterations: 16000
+  log_image_interval: 1000
+  save_ckpt_interval: 1000
   max_images: 1
   eval_interval: 10
