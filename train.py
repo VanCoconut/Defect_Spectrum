@@ -145,11 +145,12 @@ class Trainer:
         return img_mask, noise
 
     def on_train_epoch_end(self):
-        if (self.iter) % self.log_image_interval == 0:
-            self.log_images()
 
         if (self.iter) % self.save_ckpt_interval == 0:
             self.save_ckpt()
+
+        if (self.iter) % self.log_image_interval == 0:
+            self.log_images()
 
         # if (self.iter) % self.eval_interval == 0:
         #     self.eval()
@@ -234,8 +235,8 @@ class Trainer:
               f'{self.sample_dir}samples_img_{img_name}.png',
               normalize=True, value_range=(-1, 1), nrow=self.max_images
             )
-            
-            for i in range(batch):
+
+            for i in range(min(batch, 10)):
                 rgb_mask = self.semantic_mask_to_rgb(argmax_depth[i].cpu().numpy())
                 #im_masks = Image.fromarray(final_masks[i].cpu().numpy())
                 im = Image.fromarray(rgb_mask)
