@@ -266,20 +266,19 @@ class Trainer:
         ckpt_path = os.path.join(self.args.save_dir, f"diffusion_{self.iteration:06d}.pt")
         torch.save({
             "model": self.model.state_dict(),
-            "optimizer": self.optimizer.state_dict(),
-            "iteration": self.iteration,
+            "ema": self.ema.state_dict(),
+            "optimizer": self.optim.state_dict(),
+            "iteration": self.iteration
         }, ckpt_path)
 
-        # Dopo il salvataggio: mantieni solo gli ultimi 2 checkpoint
-        all_ckpts = sorted(glob.glob(os.path.join(self.args.save_dir, "diffusion_*.pt")))
-        if len(all_ckpts) > 2:
-            for ckpt_to_delete in all_ckpts[:-2]:
-                try:
-                    os.remove(ckpt_to_delete)
-                    print(f"Removed old checkpoint: {ckpt_to_delete}")
-                except Exception as e:
-                    print(f"Error removing {ckpt_to_delete}: {e}")
-    
+        # Rimuove il vecchio checkpoint solo dalla 3a iterazione in poi
+        if self.iteration >= self.save_ckpt_interval * 3:
+            old_iter = self.iteration - self.save_ckpt_interval
+            old_ckpt_path = os.path.join(self.args.save_dir, f"diffusion_{old_iter:06d}.pt")
+            if os.path.exists(old_ckpt_path):
+                os.remove(old_ckpt_path)
+
+
     def make_work_dir(self):
         
         self.sample_dir = os.path.join(self.work_dir, 'sample/')
