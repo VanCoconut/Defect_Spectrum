@@ -263,15 +263,22 @@ class Trainer:
             plt.savefig('{}/schedule.png'.format(self.work_dir))
 
     def save_ckpt(self):
-        if get_rank() == 0:
-            torch.save(
-                {
-                    "model": self.m_module.state_dict(),
-                    "optimizer": self.optim.state_dict(),
-                    "ema": self.ema.state_dict(),
-                },
-                f"{self.checkpoint_dir}diffusion_{str(self.iter).zfill(6)}.pt"
-            )
+        ckpt_path = os.path.join(self.args.save_dir, f"diffusion_{self.iteration:06d}.pt")
+        torch.save({
+            "model": self.model.state_dict(),
+            "optimizer": self.optimizer.state_dict(),
+            "iteration": self.iteration,
+        }, ckpt_path)
+
+        # Dopo il salvataggio: mantieni solo gli ultimi 2 checkpoint
+        all_ckpts = sorted(glob.glob(os.path.join(self.args.save_dir, "diffusion_*.pt")))
+        if len(all_ckpts) > 2:
+            for ckpt_to_delete in all_ckpts[:-2]:
+                try:
+                    os.remove(ckpt_to_delete)
+                    print(f"Removed old checkpoint: {ckpt_to_delete}")
+                except Exception as e:
+                    print(f"Error removing {ckpt_to_delete}: {e}")
     
     def make_work_dir(self):
         
