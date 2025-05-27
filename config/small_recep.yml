@@ -3,7 +3,7 @@ diffusion:
   params:
     parameterization: x0
     schedule: cosine
-    num_timestep: 1000
+    num_timestep: 100
 
 model:
   target: models.unet.unet_receptive.UNetModel

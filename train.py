@@ -236,7 +236,7 @@ class Trainer:
               normalize=True, value_range=(-1, 1), nrow=self.max_images
             )
 
-            for i in range(min(batch, 10)):
+            for i in range(batch):
                 rgb_mask = self.semantic_mask_to_rgb(argmax_depth[i].cpu().numpy())
                 #im_masks = Image.fromarray(final_masks[i].cpu().numpy())
                 im = Image.fromarray(rgb_mask)
