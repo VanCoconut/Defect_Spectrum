@@ -43,5 +43,5 @@ train:
   iterations: 1600
   log_image_interval: 100
   save_ckpt_interval: 100
-  max_images: 8
+  max_images: 1
   eval_interval: 10
