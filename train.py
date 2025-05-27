@@ -263,20 +263,21 @@ class Trainer:
             plt.savefig('{}/schedule.png'.format(self.work_dir))
 
     def save_ckpt(self):
-        ckpt_path = os.path.join(self.checkpoint_dir, f"diffusion_{self.iteration:06d}.pt")
+        ckpt_path = os.path.join(self.checkpoint_dir, f"diffusion_{self.iter:06d}.pt")
         torch.save({
             "model": self.model.state_dict(),
             "ema": self.ema.state_dict(),
             "optimizer": self.optim.state_dict(),
-            "iteration": self.iteration
+            "iteration": self.iter
         }, ckpt_path)
 
-        # Rimuove il vecchio checkpoint solo dalla 3a iterazione in poi
-        if self.iteration >= self.save_ckpt_interval * 3:
-            old_iter = self.iteration - self.save_ckpt_interval
+        # Rimuove checkpoint vecchi: conserva solo gli ultimi 2
+        if self.iter >= self.save_ckpt_interval * 3:
+            old_iter = self.iter - self.save_ckpt_interval * 2
             old_ckpt_path = os.path.join(self.checkpoint_dir, f"diffusion_{old_iter:06d}.pt")
             if os.path.exists(old_ckpt_path):
                 os.remove(old_ckpt_path)
+
 
 
     def make_work_dir(self):
