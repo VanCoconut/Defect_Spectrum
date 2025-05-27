@@ -263,7 +263,7 @@ class Trainer:
             plt.savefig('{}/schedule.png'.format(self.work_dir))
 
     def save_ckpt(self):
-        ckpt_path = os.path.join(self.args.save_dir, f"diffusion_{self.iteration:06d}.pt")
+        ckpt_path = os.path.join(self.checkpoint_dir, f"diffusion_{self.iteration:06d}.pt")
         torch.save({
             "model": self.model.state_dict(),
             "ema": self.ema.state_dict(),
@@ -274,7 +274,7 @@ class Trainer:
         # Rimuove il vecchio checkpoint solo dalla 3a iterazione in poi
         if self.iteration >= self.save_ckpt_interval * 3:
             old_iter = self.iteration - self.save_ckpt_interval
-            old_ckpt_path = os.path.join(self.args.save_dir, f"diffusion_{old_iter:06d}.pt")
+            old_ckpt_path = os.path.join(self.checkpoint_dir, f"diffusion_{old_iter:06d}.pt")
             if os.path.exists(old_ckpt_path):
                 os.remove(old_ckpt_path)
 
