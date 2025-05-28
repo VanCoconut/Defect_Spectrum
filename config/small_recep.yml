@@ -32,7 +32,7 @@ data:
   params:
     dir:  /kaggle/input/solobuchi
     resolution: 256
-    num_image_train: 50
+    num_image_train: 22
 
 optimizer:
   params:
