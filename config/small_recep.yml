@@ -8,7 +8,7 @@ diffusion:
 model:
   target: models.unet.unet_receptive.UNetModel
   params:
-    image_size: 256
+    image_size: 512
     in_channels: 5
     out_channels: 5
     model_channels: 192
@@ -30,8 +30,8 @@ data:
   bs_per_gpu: 2
   num_workers: 1
   params:
-    dir:  /kaggle/input/solobuchi
-    resolution: 256
+    dir:  /kaggle/input/tutti-le-classi-di-difetti-per-il-gan-senza-disti
+    resolution: 512
     num_image_train: 22
 
 optimizer:
