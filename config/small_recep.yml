@@ -8,7 +8,7 @@ diffusion:
 model:
   target: models.unet.unet_receptive.UNetModel
   params:
-    image_size: 512
+    image_size: 256
     in_channels: 5
     out_channels: 5
     model_channels: 192
@@ -31,7 +31,7 @@ data:
   num_workers: 1
   params:
     dir:  /kaggle/input/tutti-le-classi-di-difetti-per-il-gan-senza-disti
-    resolution: 512
+    resolution: 256
     num_image_train: 22
 
 optimizer:
@@ -40,7 +40,7 @@ optimizer:
     weight_decay: 0.002
 
 train:
-  iterations: 16000
+  iterations: 26000
   log_image_interval: 1000
   save_ckpt_interval: 1000
   max_images: 1
