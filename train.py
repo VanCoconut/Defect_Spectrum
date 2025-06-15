@@ -226,12 +226,6 @@ class Trainer:
         softmax_output = F.softmax(gathered_masks, dim=1)
         argmax_depth = torch.argmax(softmax_output, dim=1)
 
-        # ⬇️ Aggiungi questo blocco
-        if get_rank() == 0:
-            single_mask = argmax_depth[0].detach().cpu()
-            values, counts = torch.unique(single_mask, return_counts=True)
-            print(f"📊 Iter {self.iter}: Classi nella maschera generata: {values.tolist()}, Count: {counts.tolist()}")
-
 
         batch, _, _ = argmax_depth.shape
 
