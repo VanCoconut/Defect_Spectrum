@@ -9,8 +9,8 @@ model:
   target: models.unet.unet_receptive.UNetModel
   params:
     image_size: 256
-    in_channels: 8
-    out_channels: 8
+    in_channels: 9
+    out_channels: 9
     model_channels: 192
     #dropout: 0.3
     # attention_downsample:
