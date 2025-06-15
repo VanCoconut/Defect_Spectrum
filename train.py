@@ -233,7 +233,7 @@ class Trainer:
             print(f"📊 Iter {self.iter}: Classi nella maschera generata: {values.tolist()}, Count: {counts.tolist()}")
 
 
-    batch, _, _ = argmax_depth.shape
+        batch, _, _ = argmax_depth.shape
 
         if get_rank() == 0:
 
