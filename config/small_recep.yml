@@ -30,7 +30,7 @@ data:
   bs_per_gpu: 2
   num_workers: 1
   params:
-    dir:  /kaggle/input/tutti-le-classi-di-difetti-per-il-gan-senza-disti
+    dir:  /kaggle/input/daset-compelto-seg
     resolution: 256
     num_image_train: 22
 
