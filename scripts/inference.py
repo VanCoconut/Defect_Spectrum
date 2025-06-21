@@ -128,7 +128,7 @@ def semantic_mask_to_rgb(mask):
         rgb_mask[mask == i] = colors[i]
     return rgb_mask
 
-def log_images(iter, image_dir, mask_dir, mask_converted_dir):
+def log_images(iter, image_dir, mask_dir, mask_converted_dir, model_small, diffusion_small):
     model_kwargs = {}
     ch = args.num_defect + 4
     pred = torch.randn(batch_size, ch, 256, 256)
@@ -140,11 +140,12 @@ def log_images(iter, image_dir, mask_dir, mask_converted_dir):
         model=model_small,
         shape=pred.shape,
         progress=True,
-        noise=None,  # Genera da rumore
+        noise=None,  # no input noise from large model
         return_intermediates=True,
         model_kwargs=model_kwargs,
         log_interval=diffusion_small.num_timesteps // 10
     )
+
 
 
 
@@ -236,4 +237,5 @@ if __name__ == '__main__':
 
     for i in range(10):
         with torch.no_grad():
-            log_images(i, images_dir, mask_dir, mask_converted_dir)
+            log_images(i, images_dir, mask_dir, mask_converted_dir, model_small, diffusion_small)
+
