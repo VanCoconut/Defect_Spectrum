@@ -134,30 +134,22 @@ def log_images(iter, image_dir, mask_dir, mask_converted_dir):
     pred = torch.randn(batch_size, ch, 256, 256)
     img_name = str(iter).zfill(6)
 
-    model_kwargs["num_timesteps"] = (1000, args.step_inference)
-    generated_sampled_1, _ = diffusion_large.p_sample_loop(
-                model=model_large, 
-                shape=pred.shape,
-                progress=True,
-                noise=None,
-                return_intermediates=True,
-                model_kwargs=model_kwargs,
-                log_interval=diffusion_large.num_timesteps // 10
-                )
+
     model_kwargs["num_timesteps"] = (args.step_inference, 0)
     generated_sampled_2, _ = diffusion_small.p_sample_loop(
-                model=model_small, 
-                shape=pred.shape,
-                progress=True,
-                noise=generated_sampled_1,
-                return_intermediates=True,
-                model_kwargs=model_kwargs,
-                log_interval=diffusion_small.num_timesteps // 10
-            )
+        model=model_small,
+        shape=pred.shape,
+        progress=True,
+        noise=None,  # Genera da rumore
+        return_intermediates=True,
+        model_kwargs=model_kwargs,
+        log_interval=diffusion_small.num_timesteps // 10
+    )
 
-            
 
-    # save images to destination
+
+
+# save images to destination
     for i in range(generated_sampled_2.shape[0]):
         image_mask = generated_sampled_2[i]
         
@@ -187,10 +179,10 @@ if __name__ == '__main__':
     parser.add_argument("--local_rank", type=int, default=0)
     parser.add_argument("--step_inference", type=int)
     parser.add_argument("--sample_dir", type=str)
-    parser.add_argument("--large_recep", type=str)
+    parser.add_argument("--large_recep", type=str, default=None)
     parser.add_argument("--small_recep", type=str)
     parser.add_argument("--num_defect", type=int)
-    parser.add_argument("--large_recep_config", type=str)
+    parser.add_argument("--large_recep_config", type=str, default=None)
     parser.add_argument("--small_recep_config", type=str)
     args = parser.parse_args()
 
@@ -211,19 +203,17 @@ if __name__ == '__main__':
     d_small = yaml.safe_load(f_small)
     d_large = yaml.safe_load(f_large)
 
-    diffusion_small = instantiate_from_config(d_small['diffusion']).to(device)
-    model_small = instantiate_from_config(d_small['model']).to(device) #small recep
+    model_large = None
+    diffusion_large = None
 
-    small_receptive_path = args.small_recep
-    ckpt = torch.load(small_receptive_path, map_location=device)
-    model_small.load_state_dict(ckpt['model'], strict=False)
+    if args.large_recep_config and args.large_recep:
+        with open(args.large_recep_config, 'r', encoding='utf-8') as f_large:
+            d_large = yaml.safe_load(f_large)
+            diffusion_large = instantiate_from_config(d_large['diffusion']).to(device)
+            model_large = instantiate_from_config(d_large['model']).to(device)
+            ckpt = torch.load(args.large_recep, map_location=device)
+            model_large.load_state_dict(ckpt['model'], strict=False)
 
-    diffusion_large = instantiate_from_config(d_large['diffusion']).to(device)
-    model_large = instantiate_from_config(d_large['model']).to(device) #large recep
-
-    large_receptive_path = args.large_recep
-    ckpt = torch.load(large_receptive_path, map_location=device)
-    model_large.load_state_dict(ckpt['model'], strict=False)
 
     if distributed:
         model_small = nn.parallel.DistributedDataParallel(
@@ -232,11 +222,13 @@ if __name__ == '__main__':
             output_device=args.local_rank
         )
 
-        model_large = nn.parallel.DistributedDataParallel(
-            model_large,
-            device_ids=[args.local_rank],
-            output_device=args.local_rank
-        )
+        if model_large is not None:
+            model_large = nn.parallel.DistributedDataParallel(
+                model_large,
+                device_ids=[args.local_rank],
+                output_device=args.local_rank
+            )
+
 
     # Generation loop 
     root_dir = args.sample_dir
