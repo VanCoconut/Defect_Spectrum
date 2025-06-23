@@ -199,52 +199,101 @@ class Trainer:
         argmax_depth[max_values < threshold] = 0
         
         return argmax_depth
-    
+
     def log_images(self, img_name=None):
         self.model.eval()
-        if img_name is None:
-            img_name = str(self.iter).zfill(6)
-        model_kwargs = {}
-        
-        images, intermediates = self.diffusion.p_sample_loop(
-                model=self.model, 
+
+        if self.iter == self.iterations:
+            # Salvataggio finale di 1000 immagini diverse
+            num_final_images = 10
+            final_sample_dir = os.path.join(self.work_dir, "final_samples")
+            final_img_dir = os.path.join(final_sample_dir, "images")
+            final_mask_dir = os.path.join(final_sample_dir, "masks")
+
+            os.makedirs(final_img_dir, exist_ok=True)
+            os.makedirs(final_mask_dir, exist_ok=True)
+
+            # Salviamo le immagini a blocchi di batch_size
+            batch_size = self.kwargs["shape"][0]
+            num_batches = (num_final_images + batch_size - 1) // batch_size
+            img_counter = 1
+
+            for b in range(num_batches):
+                current_batch_size = min(batch_size, num_final_images - (b * batch_size))
+                shape = [current_batch_size, *self.kwargs["shape"][1:]]
+
+                images, _ = self.diffusion.p_sample_loop(
+                    model=self.model,
+                    shape=shape,
+                    progress=True if get_rank() == 0 else False,
+                    model_kwargs=self.kwargs,
+                    log_interval=self.diffusion.num_timesteps // 10
+                )
+
+                gathered_images = all_gather(images)
+                gathered_img = torch.cat(gathered_images, dim=0)[:, :3, :, :]
+                gathered_masks = torch.cat(gathered_images, dim=0)[:, 3:, :, :]
+                softmax_output = F.softmax(gathered_masks, dim=1)
+                argmax_depth = torch.argmax(softmax_output, dim=1)
+                batch = argmax_depth.shape[0]
+
+                for i in range(batch):
+                    filename = f"im{img_counter:04d}.png"
+
+                    # Salva immagine RGB
+                    torchvision.utils.save_image(
+                        gathered_img[i],
+                        os.path.join(final_img_dir, filename),
+                        normalize=True, value_range=(-1, 1)
+                    )
+
+                    # Salva maschera RGB
+                    rgb_mask = self.semantic_mask_to_rgb(argmax_depth[i].cpu().numpy())
+                    im = Image.fromarray(rgb_mask)
+                    im.save(os.path.join(final_mask_dir, filename))
+
+                    img_counter += 1
+
+        else:
+            # Comportamento normale durante il training
+            if img_name is None:
+                img_name = str(self.iter).zfill(6)
+
+            model_kwargs = {}
+
+            images, intermediates = self.diffusion.p_sample_loop(
+                model=self.model,
                 shape=self.kwargs['shape'],
-                progress=True if get_rank()==0 else False,
+                progress=True if get_rank() == 0 else False,
                 noise=self.kwargs['noise'],
                 return_intermediates=True,
                 model_kwargs=self.kwargs,
                 log_interval=self.diffusion.num_timesteps // 10
-                )
-        
-        gathered_images = all_gather(images)
-        gathered_img = torch.cat(gathered_images, dim=0)[:, :3, :, :]
-        torch.set_printoptions(profile="full")
-
-        
-        #calculate the final masks
-        gathered_masks = torch.cat(gathered_images, dim=0)[:, 3:, :, :]
-        softmax_output = F.softmax(gathered_masks, dim=1)
-        argmax_depth = torch.argmax(softmax_output, dim=1)
-
-
-        batch, _, _ = argmax_depth.shape
-
-        if get_rank() == 0:
-
-            torchvision.utils.save_image(
-              gathered_img, 
-              f'{self.sample_dir}samples_img_{img_name}.png',
-              normalize=True, value_range=(-1, 1), nrow=self.max_images
             )
 
-            for i in range(batch):
-                rgb_mask = self.semantic_mask_to_rgb(argmax_depth[i].cpu().numpy())
-                #im_masks = Image.fromarray(final_masks[i].cpu().numpy())
-                im = Image.fromarray(rgb_mask)
-                im.save(f'{self.sample_mask_dir}samples_mask_{img_name}_{i}.png')
-  
+            gathered_images = all_gather(images)
+            gathered_img = torch.cat(gathered_images, dim=0)[:, :3, :, :]
+            gathered_masks = torch.cat(gathered_images, dim=0)[:, 3:, :, :]
+            softmax_output = F.softmax(gathered_masks, dim=1)
+            argmax_depth = torch.argmax(softmax_output, dim=1)
+            batch = argmax_depth.shape[0]
+
+            if get_rank() == 0:
+                torchvision.utils.save_image(
+                    gathered_img,
+                    f'{self.sample_dir}samples_img_{img_name}.png',
+                    normalize=True, value_range=(-1, 1),
+                    nrow=self.max_images
+                )
+
+                for i in range(batch):
+                    rgb_mask = self.semantic_mask_to_rgb(argmax_depth[i].cpu().numpy())
+                    im = Image.fromarray(rgb_mask)
+                    im.save(f'{self.sample_mask_dir}samples_mask_{img_name}_{i}.png')
+
         self.model.train()
         synchronize()
+
 
     def log_schedule(self):
         if get_rank() == 0:
