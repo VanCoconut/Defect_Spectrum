@@ -222,12 +222,13 @@ class Trainer:
                 current_batch_size = min(batch_size, num_final_images - (b * batch_size))
                 shape = [current_batch_size, *self.kwargs["shape"][1:]]
 
-                images, _ = self.diffusion.p_sample_loop(
+                images, intermediates = self.diffusion.p_sample_loop(
                     model=self.model,
                     shape=shape,
                     progress=True if get_rank() == 0 else False,
                     model_kwargs=self.kwargs,
-                    log_interval=self.diffusion.num_timesteps // 10
+                    log_interval=self.diffusion.num_timesteps // 10,
+                    return_intermediates=True
                 )
 
                 gathered_images = all_gather(images)
