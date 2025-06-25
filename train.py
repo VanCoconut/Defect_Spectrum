@@ -18,31 +18,32 @@ from torch.utils.tensorboard import SummaryWriter
 from utils_new.eval_util import flatten_results_dict
 import argparse
 
+
 class Trainer:
 
     def __init__(
-        self,
-        model,
-        diffusion,
-        ema,
-        loader,
-        device,
-        optim,
-        distributed,
-        work_dir,
-        iterations,
-        log_image_interval,
-        save_ckpt_interval,
-        max_images,
-        evaluator,
-        eval_interval,
+            self,
+            model,
+            diffusion,
+            ema,
+            loader,
+            device,
+            optim,
+            distributed,
+            work_dir,
+            iterations,
+            log_image_interval,
+            save_ckpt_interval,
+            max_images,
+            evaluator,
+            eval_interval,
     ):
 
         self.device = device
         self.work_dir = work_dir
         self.make_work_dir()
 
-        if get_rank()==0:
+        if get_rank() == 0:
             self.writer = SummaryWriter(self.work_dir)
         else:
             self.writer = None
@@ -80,6 +81,7 @@ class Trainer:
 
         self.kwargs = {}
         self.log_schedule()
+
     def save_png_heatmaps(self, softmax_output):
         heatmap_dir = os.path.join(self.checkpoint_dir, "heatmaps")
         os.makedirs(heatmap_dir, exist_ok=True)
@@ -131,7 +133,6 @@ class Trainer:
         plt.savefig(out)
         plt.close()
 
-
     def log_loss_curve(self, losses):
         if self.writer is not None:
             for k, v in losses.items():
@@ -180,14 +181,14 @@ class Trainer:
                 (x_start.shape[0],),
                 device=self.device,
             ).long()
-            #print(args.seperate_channel)
+            # print(args.seperate_channel)
             loss, loss_dict = self.diffusion.training_losses(
-                    self.model, 
-                    x_start=x_start, 
-                    t=t, device=self.device, 
-                    noise=noise, 
-                    seperate_channel_loss=args.seperate_channel_loss
-                    )
+                self.model,
+                x_start=x_start,
+                t=t, device=self.device,
+                noise=noise,
+                seperate_channel_loss=args.seperate_channel_loss
+            )
 
             loss_reduced = reduce_loss_dict(loss_dict)
 
@@ -200,8 +201,8 @@ class Trainer:
             total_norm = 0.0
             for p in self.model.parameters():
                 if p.grad is not None:
-                    total_norm += p.grad.data.norm(2).item()**2
-            total_norm = total_norm**0.5
+                    total_norm += p.grad.data.norm(2).item() ** 2
+            total_norm = total_norm ** 0.5
             self.grad_norm_history.append(total_norm)
             # --- fine aggiunta ---
 
@@ -221,7 +222,7 @@ class Trainer:
 
         ##### comment out # for swapping classes index to channel-wise 255 #####
         print(args.num_defect)
-        unique_values = range(0, args.num_defect+1)  # Channel fusion 
+        unique_values = range(0, args.num_defect + 1)  # Channel fusion
 
         num_classes = len(unique_values)
 
@@ -231,14 +232,14 @@ class Trainer:
         onehot_mask = torch.zeros(b, num_classes, h, w)
         onehot_mask.scatter_(1, mask.long(), 1)
         mask = mask.squeeze(1)
-       
+
         img_mask = torch.cat((batch, onehot_mask), dim=1)
 
         img_mask = img_mask.to(self.device)
         noise = None
 
         if self.iter == 0:
-            self.kwargs['noise'] = noise[:self.max_images,:,:] if noise is not None else None
+            self.kwargs['noise'] = noise[:self.max_images, :, :] if noise is not None else None
             self.kwargs['shape'] = [self.max_images, *img_mask.shape[1:]]
             self.kwargs["num_timesteps"] = None
         return img_mask, noise
@@ -262,20 +263,19 @@ class Trainer:
             self.log_loss_curve(loss_reduced)
             self.log_histogram_loss(loss_reduced)
 
-
     def semantic_mask_to_rgb(self, mask):
         # Define a color for each of the 11 possible class values (0 through 10)
         colors = [
-            (0, 0, 0),       # 0: Black
-            (0, 0, 255),     # 1: Blue
-            (0, 255, 0),     # 2: Green
-            (255, 0, 0),     # 3: Red
-            (0, 255, 255),   # 4: Yellow
-            (255, 0, 255),   # 5: Magenta
-            (255, 255, 0),   # 6: Cyan
-            (128, 0, 0),     # 7: Dark Red
-            (0, 128, 0),     # 8: Dark Green
-            (0, 0, 128),     # 9: Dark Blue
+            (0, 0, 0),  # 0: Black
+            (0, 0, 255),  # 1: Blue
+            (0, 255, 0),  # 2: Green
+            (255, 0, 0),  # 3: Red
+            (0, 255, 255),  # 4: Yellow
+            (255, 0, 255),  # 5: Magenta
+            (255, 255, 0),  # 6: Cyan
+            (128, 0, 0),  # 7: Dark Red
+            (0, 128, 0),  # 8: Dark Green
+            (0, 0, 128),  # 9: Dark Blue
             (128, 128, 128)  # 10: Gray
         ]
 
@@ -284,41 +284,39 @@ class Trainer:
         rgb_mask = np.zeros((h, w, 3), dtype=np.uint8)
         for i in range(11):  # we have 11 classes
             rgb_mask[mask == i] = colors[i]
-        return rgb_mask     
-    
+        return rgb_mask
+
     def argmax_above_threshold(self, softmax_output, threshold):
         # Compute the argmax values along the depth (1-axis)
         argmax_depth = torch.argmax(softmax_output, dim=1) + 1  # Adding 1 to make it 1-based
-        
+
         # Compute the max values along the depth (1-axis)
         max_values = torch.max(softmax_output, dim=1).values  # .values to get the actual max values
 
         # Set positions with max values below the threshold to 0
         argmax_depth[max_values < threshold] = 0
-        
+
         return argmax_depth
 
     def log_images(self, img_name=None):
         self.model.eval()
 
+        # Sampling finale o comportamento normale
         if self.iter == self.iterations:
-            # Sampling finale di num_final_images immagini
+            # Genero un solo batch (o multipli) ma non salvo heatmap qui
             num_final_images = 5
-            final_sample_dir = os.path.join(self.work_dir, "final_samples")
-            final_img_dir = os.path.join(final_sample_dir, "images")
-            final_mask_dir = os.path.join(final_sample_dir, "masks")
-
-            os.makedirs(final_img_dir, exist_ok=True)
-            os.makedirs(final_mask_dir, exist_ok=True)
-
             batch_size = self.kwargs["shape"][0]
             num_batches = (num_final_images + batch_size - 1) // batch_size
             img_counter = 1
+            final_sample_dir = os.path.join(self.work_dir, "final_samples")
+            final_img_dir = os.path.join(final_sample_dir, "images")
+            final_mask_dir = os.path.join(final_sample_dir, "masks")
+            os.makedirs(final_img_dir, exist_ok=True)
+            os.makedirs(final_mask_dir, exist_ok=True)
 
             for b in range(num_batches):
-                current_batch_size = min(batch_size, num_final_images - (b * batch_size))
-                shape = [current_batch_size, *self.kwargs["shape"][1:]]
-
+                cur_bs = min(batch_size, num_final_images - b * batch_size)
+                shape = [cur_bs, *self.kwargs["shape"][1:]]
                 images, intermediates = self.diffusion.p_sample_loop(
                     model=self.model,
                     shape=shape,
@@ -327,74 +325,53 @@ class Trainer:
                     log_interval=self.diffusion.num_timesteps // 10,
                     return_intermediates=True
                 )
-
                 gathered = all_gather(images)
-                imgs = torch.cat(gathered, dim=0)[:, :3, :, :]
-                masks = torch.cat(gathered, dim=0)[:, 3:, :, :]
+                imgs = torch.cat(gathered, dim=0)[:, :3]
+                masks = torch.cat(gathered, dim=0)[:, 3:]
                 softmax_output = F.softmax(masks, dim=1)
+                # memorizzo l'ultimo softmax
+                self.last_softmax = softmax_output.detach().cpu()
 
-                # Salva le heatmap in PNG
-                if get_rank() == 0:
-                    self.save_png_heatmaps(softmax_output)
-
-                argmax_depth = torch.argmax(softmax_output, dim=1)
-                batch = argmax_depth.shape[0]
-
-                for i in range(batch):
-                    filename = f"im{img_counter:04d}.png"
-                    # RGB
+                # salvo immagini e maschere
+                for i in range(imgs.shape[0]):
+                    fn = f"im{img_counter:04d}.png"
                     torchvision.utils.save_image(
                         imgs[i],
-                        os.path.join(final_img_dir, filename),
+                        os.path.join(final_img_dir, fn),
                         normalize=True, value_range=(-1, 1)
                     )
-                    # Mask RGB
-                    rgb_mask = self.semantic_mask_to_rgb(argmax_depth[i].cpu().numpy())
-                    Image.fromarray(rgb_mask).save(os.path.join(final_mask_dir, filename))
-
+                    rgb = self.semantic_mask_to_rgb(torch.argmax(softmax_output[i], 1).cpu().numpy())
+                    Image.fromarray(rgb).save(os.path.join(final_mask_dir, fn))
                     img_counter += 1
 
         else:
-            # Iterazioni normali: un solo batch e salvataggio per TensorBoard + PNG heatmap
+            # salvataggio standard per TensorBoard e PNG di esempio (senza heatmap)
             if img_name is None:
                 img_name = str(self.iter).zfill(6)
-
-            images, intermediates = self.diffusion.p_sample_loop(
+            images, _ = self.diffusion.p_sample_loop(
                 model=self.model,
                 shape=self.kwargs['shape'],
                 progress=(get_rank() == 0),
                 noise=self.kwargs['noise'],
-                return_intermediates=True,
+                return_intermediates=False,
                 model_kwargs=self.kwargs,
                 log_interval=self.diffusion.num_timesteps // 10
             )
-
             gathered = all_gather(images)
-            imgs = torch.cat(gathered, dim=0)[:, :3, :, :]
-            masks = torch.cat(gathered, dim=0)[:, 3:, :, :]
+            imgs = torch.cat(gathered, dim=0)[:, :3]
+            masks = torch.cat(gathered, dim=0)[:, 3:]
             softmax_output = F.softmax(masks, dim=1)
-
-            # Salva heatmap in PNG
-            if get_rank() == 0:
-                self.save_png_heatmaps(softmax_output)
-
-            argmax_depth = torch.argmax(softmax_output, dim=1)
-            batch = argmax_depth.shape[0]
+            # non salvo heatmap qui
 
             if get_rank() == 0:
-                # salva immagine di esempio
                 torchvision.utils.save_image(
                     imgs,
                     f'{self.sample_dir}samples_img_{img_name}.png',
-                    normalize=True, value_range=(-1, 1),
-                    nrow=self.max_images
+                    normalize=True, value_range=(-1, 1), nrow=self.max_images
                 )
-                # salva maschere
-                for i in range(batch):
-                    rgb_mask = self.semantic_mask_to_rgb(argmax_depth[i].cpu().numpy())
-                    Image.fromarray(rgb_mask).save(
-                        f'{self.sample_mask_dir}samples_mask_{img_name}_{i}.png'
-                    )
+                for i in range(imgs.shape[0]):
+                    rgb = self.semantic_mask_to_rgb(torch.argmax(softmax_output[i], 1).cpu().numpy())
+                    Image.fromarray(rgb).save(f'{self.sample_mask_dir}samples_mask_{img_name}_{i}.png')
 
         self.model.train()
         synchronize()
@@ -410,7 +387,8 @@ class Trainer:
             plt.ylabel('betas')
 
             plt.subplot(212)
-            plt.plot([i for i in range(self.diffusion.num_timesteps)], self.diffusion.alphas_cumprod.cpu(), label='alphas_cumprod')
+            plt.plot([i for i in range(self.diffusion.num_timesteps)], self.diffusion.alphas_cumprod.cpu(),
+                     label='alphas_cumprod')
             plt.xlabel('t')
             plt.ylabel('alpha_cumprod')
 
@@ -425,40 +403,41 @@ class Trainer:
             "iteration": self.iter
         }, ckpt_path)
 
+        # solo all'ultima iterazione generiamo tutti i PNG
         if self.iter == self.iterations and get_rank() == 0:
             self.save_png_loss_curve()
             self.save_png_histogram_loss()
             self.save_png_grad_norm()
+            # heatmaps dall'ultimo sampling
+            self.save_png_heatmaps(self.last_softmax)
 
-        # Rimuove checkpoint vecchi: conserva solo gli ultimi 2
+        # mantieni solo ultimi 2 checkpoint
         if self.iter >= self.save_ckpt_interval * 3:
-            old_iter = self.iter - self.save_ckpt_interval * 2
-            old_ckpt_path = os.path.join(self.checkpoint_dir, f"diffusion_{old_iter:06d}.pt")
-            if os.path.exists(old_ckpt_path):
-                os.remove(old_ckpt_path)
-
-
+            old = self.iter - self.save_ckpt_interval * 2
+            old_path = os.path.join(self.checkpoint_dir, f"diffusion_{old:06d}.pt")
+            if os.path.exists(old_path):
+                os.remove(old_path)
 
     def make_work_dir(self):
-        
+
         self.sample_dir = os.path.join(self.work_dir, 'sample/')
         self.sample_mask_dir = os.path.join(self.sample_dir, 'mask/')
-        self.checkpoint_dir= os.path.join(self.work_dir,'checkpoint/')
+        self.checkpoint_dir = os.path.join(self.work_dir, 'checkpoint/')
 
         if get_rank() == 0:
-
             os.makedirs(os.path.dirname(self.sample_dir), exist_ok=True)
             os.makedirs(os.path.dirname(self.sample_mask_dir), exist_ok=True)
             os.makedirs(os.path.dirname(self.checkpoint_dir), exist_ok=True)
 
     def eval(self):
-        if get_rank()==0:
+        if get_rank() == 0:
             result = {self.evaluator.metrics: self.evaluator.eval(self.model, self.kwargs['shape'])}
             # tensor board
             result = flatten_results_dict(result)
             print(result)
             for k, v in result.items():
                 self.writer.add_scalar(f'eval/{k}', v, self.iter)
+
 
 def main():
     device = "cuda"
@@ -478,8 +457,7 @@ def main():
     # dump config
     os.makedirs(os.path.dirname(args.work_dir), exist_ok=True)
     config_path = os.path.join(args.work_dir, 'config_dump.yml')
-    #save_dict_to_yaml(d, config_path)
-
+    # save_dict_to_yaml(d, config_path)
 
     # distribute training
     n_gpu = int(os.environ["WORLD_SIZE"]) if "WORLD_SIZE" in os.environ else 1
@@ -488,7 +466,7 @@ def main():
         torch.cuda.set_device(args.local_rank)
         torch.distributed.init_process_group(backend="nccl", init_method="env://")
         synchronize()
-    
+
     # prepare model and diffusion
     diffusion = instantiate_from_config(d['diffusion']).to(device)
     model = instantiate_from_config(d['model']).to(device)
@@ -498,9 +476,10 @@ def main():
     accumulate(model_ema, model, 0)
 
     optimizer = optim.AdamW(
-            list(model.parameters()), lr=d['optimizer']['params']['lr'], weight_decay=d['optimizer']['params']['weight_decay']
-        )
-    
+        list(model.parameters()), lr=d['optimizer']['params']['lr'],
+        weight_decay=d['optimizer']['params']['weight_decay']
+    )
+
     if 'ckpt' in d['model'].keys() and d['model']['ckpt'] is not None:
         print("load model:", args.ckpt)
         ckpt = torch.load(args.ckpt, map_location=lambda storage, loc: storage)
@@ -515,7 +494,6 @@ def main():
         model_ema.load_state_dict(ckpt["ema"])
         optimizer.load_state_dict(ckpt['optimizer'])
 
-
     if distributed:
         model = nn.parallel.DistributedDataParallel(
             model,
@@ -523,25 +501,22 @@ def main():
             output_device=args.local_rank
         )
 
-    #dataset = instantiate_from_config(d['data'])
-
+    # dataset = instantiate_from_config(d['data'])
 
     dataset = load_data(
-            data_dir=d['data']['params']['dir'],
-            batch_size=d['data']['bs_per_gpu'],
-            image_size=d['data']['params']['resolution'],
-            num_images=d['data']['params']['num_image_train']
+        data_dir=d['data']['params']['dir'],
+        batch_size=d['data']['bs_per_gpu'],
+        image_size=d['data']['params']['resolution'],
+        num_images=d['data']['params']['num_image_train']
     )
-
-
 
     # start training
     trainer = Trainer(
-        model = model,
-        diffusion = diffusion,
-        ema = model_ema,
+        model=model,
+        diffusion=diffusion,
+        ema=model_ema,
         loader=dataset,
-        optim = optimizer,
+        optim=optimizer,
         device=device,
         distributed=distributed,
         work_dir=args.work_dir,
