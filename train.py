@@ -78,7 +78,38 @@ class Trainer:
 
         self.kwargs = {}
         self.log_schedule()
-            
+
+        def log_loss_curve(self, losses):
+            if self.writer is not None:
+                for k, v in losses.items():
+                    self.writer.add_scalar(f'train/{k}', v.mean(), self.iter)
+
+    def log_histogram_loss(self, losses):
+        if self.writer is not None:
+            for k, v in losses.items():
+                self.writer.add_histogram(f'train/histogram_{k}', v, self.iter)
+
+    def log_grad_norm(self):
+        if self.writer is not None:
+            total_norm = 0.0
+            for p in self.model.parameters():
+                if p.grad is not None:
+                    param_norm = p.grad.data.norm(2)
+                    total_norm += param_norm.item() ** 2
+            total_norm = total_norm ** 0.5
+            self.writer.add_scalar('train/grad_norm', total_norm, self.iter)
+
+    def log_softmax_heatmaps(self, softmax_output, tag_prefix='heatmap/sample'):
+        if self.writer is not None:
+            num_channels = softmax_output.shape[1]
+            for c in range(num_channels):
+                heatmap = softmax_output[0, c].detach().cpu().numpy()  # solo il primo sample
+                fig, ax = plt.subplots()
+                im = ax.imshow(heatmap, cmap='viridis')
+                plt.colorbar(im)
+                self.writer.add_figure(f'{tag_prefix}_0_channel_{c}', fig, self.iter)
+                plt.close(fig)
+
     def train(self, args):
         for idx in self.pbar:
             self.iter = idx
@@ -109,6 +140,7 @@ class Trainer:
 
             self.optim.zero_grad()
             loss.backward()
+            self.log_grad_norm()
             self.optim.step()
 
             accumulate(self.ema, self.m_module)
@@ -155,15 +187,14 @@ class Trainer:
         # if (self.iter) % self.eval_interval == 0:
         #     self.eval()
 
-    def log_metric(self, dict):
-        if get_rank() == 0:            
+    def log_metric(self, loss_reduced):
+        if get_rank() == 0:
             self.pbar.set_description(
-                (
-                    ' '.join([f"{k}: {v.mean().item():.4f}"  for k,v in dict.items()])
-                )
+                ' '.join([f"{k}: {v.mean().item():.4f}" for k, v in loss_reduced.items()])
             )
-            for k, v in dict.items():
-                self.writer.add_scalar(f'train/{k}', (v).mean(), self.iter)
+            self.log_loss_curve(loss_reduced)
+            self.log_histogram_loss(loss_reduced)
+
 
     def semantic_mask_to_rgb(self, mask):
         # Define a color for each of the 11 possible class values (0 through 10)
@@ -276,6 +307,8 @@ class Trainer:
             gathered_img = torch.cat(gathered_images, dim=0)[:, :3, :, :]
             gathered_masks = torch.cat(gathered_images, dim=0)[:, 3:, :, :]
             softmax_output = F.softmax(gathered_masks, dim=1)
+            if get_rank() == 0:
+                self.log_softmax_heatmaps(softmax_output)
             argmax_depth = torch.argmax(softmax_output, dim=1)
             batch = argmax_depth.shape[0]
 
