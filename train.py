@@ -97,9 +97,9 @@ class Trainer:
             plt.close()
 
     def save_png_loss_curve(self):
+        # Loss history è già una lista di float
         plt.figure()
-        values = [d['loss'] for d in self.loss_history]
-        plt.plot(self.iter_history, values, label='Loss')
+        plt.plot(self.iter_history, self.loss_history, label='Loss')
         plt.xlabel('Iteration')
         plt.ylabel('Loss')
         plt.title('Training Loss Over Time')
@@ -110,9 +110,9 @@ class Trainer:
         plt.close()
 
     def save_png_histogram_loss(self):
+        # Istogramma dei valori di loss
         plt.figure()
-        all_values = np.array([d['loss'] for d in self.loss_history])
-        plt.hist(all_values, bins=30)
+        plt.hist(self.loss_history, bins=30)
         plt.xlabel('Loss')
         plt.ylabel('Frequency')
         plt.title('Loss Distribution')
@@ -122,6 +122,7 @@ class Trainer:
         plt.close()
 
     def save_png_grad_norm(self):
+        # Grad norm history è una lista di float
         plt.figure()
         plt.plot(self.iter_history, self.grad_norm_history, label='Grad Norm')
         plt.xlabel('Iteration')
