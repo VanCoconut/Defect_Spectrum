@@ -304,7 +304,7 @@ class Trainer:
 
         # Caso FINALE: ultima iterazione → sampling con intermediates
         if self.iter == self.iterations:
-            num_final_images = 5
+            num_final_images = 1000
             batch_size = self.kwargs["shape"][0]
             num_batches = (num_final_images + batch_size - 1) // batch_size
             img_counter = 1
