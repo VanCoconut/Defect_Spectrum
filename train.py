@@ -50,7 +50,9 @@ class Trainer:
         self.iterations = iterations
         self.iter = 0
         pbar = range(int(iterations) + 1)
-
+        self.loss_history = []
+        self.grad_norm_history = []
+        self.iter_history = []
         if get_rank() == 0:
             self.pbar = tqdm(pbar, initial=0, dynamic_ncols=True, smoothing=0.01)
         else:
@@ -78,7 +80,7 @@ class Trainer:
 
         self.kwargs = {}
         self.log_schedule()
-            
+
     def train(self, args):
         for idx in self.pbar:
             self.iter = idx
@@ -98,10 +100,10 @@ class Trainer:
             ).long()
             #print(args.seperate_channel)
             loss, loss_dict = self.diffusion.training_losses(
-                    self.model, 
-                    x_start=x_start, 
-                    t=t, device=self.device, 
-                    noise=noise, 
+                    self.model,
+                    x_start=x_start,
+                    t=t, device=self.device,
+                    noise=noise,
                     seperate_channel_loss=args.seperate_channel_loss
                     )
 
@@ -109,7 +111,20 @@ class Trainer:
 
             self.optim.zero_grad()
             loss.backward()
+            # Calcolo della norma del gradiente (L2)
+            total_norm = 0.0
+            for p in self.model.parameters():
+                if p.grad is not None:
+                    param_norm = p.grad.data.norm(2)
+                    total_norm += param_norm.item() ** 2
+            total_norm = total_norm ** 0.5
             self.optim.step()
+            # Salva valori per grafico
+            if get_rank() == 0:
+                loss_dict_float = {k: v.item() for k, v in loss_reduced.items()}
+                self.loss_history.append(loss_dict_float)
+                self.grad_norm_history.append(total_norm)
+                self.iter_history.append(self.iter)
 
             accumulate(self.ema, self.m_module)
             self.log_metric(loss_reduced)
@@ -122,7 +137,7 @@ class Trainer:
 
         ##### comment out # for swapping classes index to channel-wise 255 #####
         print(args.num_defect)
-        unique_values = range(0, args.num_defect+1)  # Channel fusion 
+        unique_values = range(0, args.num_defect+1)  # Channel fusion
 
         num_classes = len(unique_values)
 
@@ -132,7 +147,7 @@ class Trainer:
         onehot_mask = torch.zeros(b, num_classes, h, w)
         onehot_mask.scatter_(1, mask.long(), 1)
         mask = mask.squeeze(1)
-       
+
         img_mask = torch.cat((batch, onehot_mask), dim=1)
 
         img_mask = img_mask.to(self.device)
@@ -156,7 +171,7 @@ class Trainer:
         #     self.eval()
 
     def log_metric(self, dict):
-        if get_rank() == 0:            
+        if get_rank() == 0:
             self.pbar.set_description(
                 (
                     ' '.join([f"{k}: {v.mean().item():.4f}"  for k,v in dict.items()])
@@ -186,18 +201,18 @@ class Trainer:
         rgb_mask = np.zeros((h, w, 3), dtype=np.uint8)
         for i in range(11):  # we have 11 classes
             rgb_mask[mask == i] = colors[i]
-        return rgb_mask     
-    
+        return rgb_mask
+
     def argmax_above_threshold(self, softmax_output, threshold):
         # Compute the argmax values along the depth (1-axis)
         argmax_depth = torch.argmax(softmax_output, dim=1) + 1  # Adding 1 to make it 1-based
-        
+
         # Compute the max values along the depth (1-axis)
         max_values = torch.max(softmax_output, dim=1).values  # .values to get the actual max values
 
         # Set positions with max values below the threshold to 0
         argmax_depth[max_values < threshold] = 0
-        
+
         return argmax_depth
 
     def log_images(self, img_name=None):
@@ -329,10 +344,35 @@ class Trainer:
             if os.path.exists(old_ckpt_path):
                 os.remove(old_ckpt_path)
 
+        # Salva il grafico finale solo all'ultima iterazione
+        if self.iter == self.iterations and get_rank() == 0:
+            import matplotlib.pyplot as plt
 
+            ckpt_base = f"diffusion_{self.iter:06d}"
+            loss_keys = self.loss_history[0].keys()
+
+            plt.figure(figsize=(10, 6))
+
+            # Plot per ogni tipo di loss
+            for k in loss_keys:
+                values = [d[k] for d in self.loss_history]
+                plt.plot(self.iter_history, values, label=f"Loss - {k}")
+
+            # Plot norma gradiente
+            plt.plot(self.iter_history, self.grad_norm_history, label="Gradient Norm", linestyle="--", color="gray")
+
+            plt.xlabel("Iteration")
+            plt.ylabel("Value")
+            plt.title("Loss and Gradient Norm over Iterations")
+            plt.legend()
+            plt.grid(True)
+
+            plot_path = os.path.join(self.checkpoint_dir, f"{ckpt_base}_plot.png")
+            plt.savefig(plot_path)
+            plt.close()
 
     def make_work_dir(self):
-        
+
         self.sample_dir = os.path.join(self.work_dir, 'sample/')
         self.sample_mask_dir = os.path.join(self.sample_dir, 'mask/')
         self.checkpoint_dir= os.path.join(self.work_dir,'checkpoint/')
@@ -380,7 +420,7 @@ def main():
         torch.cuda.set_device(args.local_rank)
         torch.distributed.init_process_group(backend="nccl", init_method="env://")
         synchronize()
-    
+
     # prepare model and diffusion
     diffusion = instantiate_from_config(d['diffusion']).to(device)
     model = instantiate_from_config(d['model']).to(device)
@@ -392,7 +432,7 @@ def main():
     optimizer = optim.AdamW(
             list(model.parameters()), lr=d['optimizer']['params']['lr'], weight_decay=d['optimizer']['params']['weight_decay']
         )
-    
+
     if 'ckpt' in d['model'].keys() and d['model']['ckpt'] is not None:
         print("load model:", args.ckpt)
         ckpt = torch.load(args.ckpt, map_location=lambda storage, loc: storage)
