@@ -332,7 +332,9 @@ class Trainer:
                 softmax_output = F.softmax(masks, dim=1)
                 # salvo ultimo softmax per heatmap
                 self.last_softmax = softmax_output.detach().cpu()
-
+                # inserisci subito
+                if get_rank() == 0:
+                    self.save_png_heatmaps(self.last_softmax)
                 for i in range(imgs.shape[0]):
                     fn = f"im{img_counter:04d}.png"
                     torchvision.utils.save_image(
