@@ -404,13 +404,11 @@ class Trainer:
             "iteration": self.iter
         }, ckpt_path)
 
-        # solo all'ultima iterazione generiamo tutti i PNG
         if self.iter == self.iterations and get_rank() == 0:
             self.save_png_loss_curve()
             self.save_png_histogram_loss()
             self.save_png_grad_norm()
-            # heatmaps dall'ultimo sampling
-            self.save_png_heatmaps(self.last_softmax)
+            # heatmaps rimossi perché già salvati in log_images()
 
         # mantieni solo ultimi 2 checkpoint
         if self.iter >= self.save_ckpt_interval * 3:
@@ -418,6 +416,7 @@ class Trainer:
             old_path = os.path.join(self.checkpoint_dir, f"diffusion_{old:06d}.pt")
             if os.path.exists(old_path):
                 os.remove(old_path)
+
 
     def make_work_dir(self):
 
