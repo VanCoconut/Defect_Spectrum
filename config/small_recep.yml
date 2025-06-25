@@ -27,7 +27,7 @@ model:
   ckpt: 
 
 data:
-  bs_per_gpu: 16
+  bs_per_gpu: 8
   num_workers: 1
   params:
     dir:  /kaggle/input/daset-compelto-seg
