@@ -79,6 +79,44 @@ class Trainer:
         self.kwargs = {}
         self.log_schedule()
 
+    def save_png_loss_curve(self):
+        plt.figure()
+        values = [d['loss'] for d in self.loss_history]
+        plt.plot(self.iter_history, values, label='Loss')
+        plt.xlabel('Iteration')
+        plt.ylabel('Loss')
+        plt.title('Training Loss Over Time')
+        plt.grid(True)
+        plt.legend()
+        out = os.path.join(self.checkpoint_dir, f'diffusion_{self.iter:06d}_loss.png')
+        plt.savefig(out)
+        plt.close()
+
+    def save_png_histogram_loss(self):
+        plt.figure()
+        all_values = np.array([d['loss'] for d in self.loss_history])
+        plt.hist(all_values, bins=30)
+        plt.xlabel('Loss')
+        plt.ylabel('Frequency')
+        plt.title('Loss Distribution')
+        plt.grid(True)
+        out = os.path.join(self.checkpoint_dir, f'diffusion_{self.iter:06d}_hist_loss.png')
+        plt.savefig(out)
+        plt.close()
+
+    def save_png_grad_norm(self):
+        plt.figure()
+        plt.plot(self.iter_history, self.grad_norm_history, label='Grad Norm')
+        plt.xlabel('Iteration')
+        plt.ylabel('Gradient Norm')
+        plt.title('Gradient Norm Over Training')
+        plt.grid(True)
+        plt.legend()
+        out = os.path.join(self.checkpoint_dir, f'diffusion_{self.iter:06d}_grad_norm.png')
+        plt.savefig(out)
+        plt.close()
+
+
     def log_loss_curve(self, losses):
         if self.writer is not None:
             for k, v in losses.items():
@@ -236,7 +274,7 @@ class Trainer:
 
         if self.iter == self.iterations:
             # Salvataggio finale di 1000 immagini diverse
-            num_final_images = 10
+            num_final_images = 5
             final_sample_dir = os.path.join(self.work_dir, "final_samples")
             final_img_dir = os.path.join(final_sample_dir, "images")
             final_mask_dir = os.path.join(final_sample_dir, "masks")
@@ -354,6 +392,12 @@ class Trainer:
             "optimizer": self.optim.state_dict(),
             "iteration": self.iter
         }, ckpt_path)
+
+        if self.iter == self.iterations and get_rank() == 0:
+            self.save_png_loss_curve()
+            self.save_png_histogram_loss()
+            self.save_png_grad_norm()
+            # il heatmap lo vedi via TensorBoard o aggiungi salvataggio specifico se serve
 
         # Rimuove checkpoint vecchi: conserva solo gli ultimi 2
         if self.iter >= self.save_ckpt_interval * 3:
