@@ -301,9 +301,8 @@ class Trainer:
     def log_images(self, img_name=None):
         self.model.eval()
 
-        # Sampling finale o comportamento normale
+        # Caso FINALE: ultima iterazione → sampling con intermediates
         if self.iter == self.iterations:
-            # Genero un solo batch (o multipli) ma non salvo heatmap qui
             num_final_images = 5
             batch_size = self.kwargs["shape"][0]
             num_batches = (num_final_images + batch_size - 1) // batch_size
@@ -314,9 +313,10 @@ class Trainer:
             os.makedirs(final_img_dir, exist_ok=True)
             os.makedirs(final_mask_dir, exist_ok=True)
 
-            for b in range(num_batches):
-                cur_bs = min(batch_size, num_final_images - b * batch_size)
+            for _ in range(num_batches):
+                cur_bs = min(batch_size, num_final_images - (img_counter - 1))
                 shape = [cur_bs, *self.kwargs["shape"][1:]]
+                # qui ritorna (images, intermediates)
                 images, intermediates = self.diffusion.p_sample_loop(
                     model=self.model,
                     shape=shape,
@@ -329,10 +329,9 @@ class Trainer:
                 imgs = torch.cat(gathered, dim=0)[:, :3]
                 masks = torch.cat(gathered, dim=0)[:, 3:]
                 softmax_output = F.softmax(masks, dim=1)
-                # memorizzo l'ultimo softmax
+                # salvo ultimo softmax per heatmap
                 self.last_softmax = softmax_output.detach().cpu()
 
-                # salvo immagini e maschere
                 for i in range(imgs.shape[0]):
                     fn = f"im{img_counter:04d}.png"
                     torchvision.utils.save_image(
@@ -340,41 +339,42 @@ class Trainer:
                         os.path.join(final_img_dir, fn),
                         normalize=True, value_range=(-1, 1)
                     )
-                    rgb = self.semantic_mask_to_rgb(torch.argmax(softmax_output[i], 1).cpu().numpy())
+                    rgb = self.semantic_mask_to_rgb(torch.argmax(softmax_output[i], 0).cpu().numpy())
                     Image.fromarray(rgb).save(os.path.join(final_mask_dir, fn))
                     img_counter += 1
 
+        # CASO NORMALE durante il train → no intermediates
         else:
-            # salvataggio standard per TensorBoard e PNG di esempio (senza heatmap)
             if img_name is None:
                 img_name = str(self.iter).zfill(6)
-            images, _ = self.diffusion.p_sample_loop(
+            # qui ritorna solo images
+            images = self.diffusion.p_sample_loop(
                 model=self.model,
                 shape=self.kwargs['shape'],
                 progress=(get_rank() == 0),
                 noise=self.kwargs['noise'],
-                return_intermediates=False,
+                return_intermediates=False,      # important
                 model_kwargs=self.kwargs,
                 log_interval=self.diffusion.num_timesteps // 10
             )
             gathered = all_gather(images)
             imgs = torch.cat(gathered, dim=0)[:, :3]
             masks = torch.cat(gathered, dim=0)[:, 3:]
-            softmax_output = F.softmax(masks, dim=1)
-            # non salvo heatmap qui
-
+            # non salvare heatmap qui, solo un esempio
             if get_rank() == 0:
                 torchvision.utils.save_image(
                     imgs,
                     f'{self.sample_dir}samples_img_{img_name}.png',
-                    normalize=True, value_range=(-1, 1), nrow=self.max_images
+                    normalize=True, value_range=(-1, 1),
+                    nrow=self.max_images
                 )
                 for i in range(imgs.shape[0]):
-                    rgb = self.semantic_mask_to_rgb(torch.argmax(softmax_output[i], 1).cpu().numpy())
+                    rgb = self.semantic_mask_to_rgb(torch.argmax(masks[i], 0).cpu().numpy())
                     Image.fromarray(rgb).save(f'{self.sample_mask_dir}samples_mask_{img_name}_{i}.png')
 
         self.model.train()
         synchronize()
+
 
     def log_schedule(self):
         if get_rank() == 0:
