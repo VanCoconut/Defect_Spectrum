@@ -79,10 +79,10 @@ class Trainer:
         self.kwargs = {}
         self.log_schedule()
 
-        def log_loss_curve(self, losses):
-            if self.writer is not None:
-                for k, v in losses.items():
-                    self.writer.add_scalar(f'train/{k}', v.mean(), self.iter)
+    def log_loss_curve(self, losses):
+        if self.writer is not None:
+            for k, v in losses.items():
+                self.writer.add_scalar(f'train/{k}', v.mean(), self.iter)
 
     def log_histogram_loss(self, losses):
         if self.writer is not None:
