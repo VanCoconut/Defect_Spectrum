@@ -55,7 +55,9 @@ class Trainer:
             self.pbar = tqdm(pbar, initial=0, dynamic_ncols=True, smoothing=0.01)
         else:
             self.pbar = pbar
-
+        self.loss_history = []
+        self.grad_norm_history = []
+        self.iter_history = []
         self.data = loader
         self.optim = optim
 
@@ -78,6 +80,19 @@ class Trainer:
 
         self.kwargs = {}
         self.log_schedule()
+    def save_png_heatmaps(self, softmax_output):
+        heatmap_dir = os.path.join(self.checkpoint_dir, "heatmaps")
+        os.makedirs(heatmap_dir, exist_ok=True)
+        num_ch = softmax_output.shape[1]
+        for c in range(num_ch):
+            hm = softmax_output[0, c].detach().cpu().numpy()
+            plt.figure()
+            plt.imshow(hm, cmap='viridis')
+            plt.colorbar()
+            plt.title(f"Heatmap ch {c}")
+            out = os.path.join(heatmap_dir, f"diffusion_{self.iter:06d}_hm_ch{c}.png")
+            plt.savefig(out)
+            plt.close()
 
     def save_png_loss_curve(self):
         plt.figure()
@@ -176,6 +191,20 @@ class Trainer:
 
             loss_reduced = reduce_loss_dict(loss_dict)
 
+            # --- inizio aggiunta ---
+            # salva i dati per i grafici
+            self.iter_history.append(self.iter)
+            # estrai il singolo valore di loss (sostituisci 'loss' con la chiave giusta se le chiavi sono diverse)
+            self.loss_history.append(loss_reduced['loss'].item())
+            # calcola grad norm
+            total_norm = 0.0
+            for p in self.model.parameters():
+                if p.grad is not None:
+                    total_norm += p.grad.data.norm(2).item()**2
+            total_norm = total_norm**0.5
+            self.grad_norm_history.append(total_norm)
+            # --- fine aggiunta ---
+
             self.optim.zero_grad()
             loss.backward()
             self.log_grad_norm()
@@ -273,7 +302,7 @@ class Trainer:
         self.model.eval()
 
         if self.iter == self.iterations:
-            # Salvataggio finale di 1000 immagini diverse
+            # Sampling finale di num_final_images immagini
             num_final_images = 5
             final_sample_dir = os.path.join(self.work_dir, "final_samples")
             final_img_dir = os.path.join(final_sample_dir, "images")
@@ -282,7 +311,6 @@ class Trainer:
             os.makedirs(final_img_dir, exist_ok=True)
             os.makedirs(final_mask_dir, exist_ok=True)
 
-            # Salviamo le immagini a blocchi di batch_size
             batch_size = self.kwargs["shape"][0]
             num_batches = (num_final_images + batch_size - 1) // batch_size
             img_counter = 1
@@ -294,78 +322,82 @@ class Trainer:
                 images, intermediates = self.diffusion.p_sample_loop(
                     model=self.model,
                     shape=shape,
-                    progress=True if get_rank() == 0 else False,
+                    progress=(get_rank() == 0),
                     model_kwargs=self.kwargs,
                     log_interval=self.diffusion.num_timesteps // 10,
                     return_intermediates=True
                 )
 
-                gathered_images = all_gather(images)
-                gathered_img = torch.cat(gathered_images, dim=0)[:, :3, :, :]
-                gathered_masks = torch.cat(gathered_images, dim=0)[:, 3:, :, :]
-                softmax_output = F.softmax(gathered_masks, dim=1)
+                gathered = all_gather(images)
+                imgs = torch.cat(gathered, dim=0)[:, :3, :, :]
+                masks = torch.cat(gathered, dim=0)[:, 3:, :, :]
+                softmax_output = F.softmax(masks, dim=1)
+
+                # Salva le heatmap in PNG
+                if get_rank() == 0:
+                    self.save_png_heatmaps(softmax_output)
+
                 argmax_depth = torch.argmax(softmax_output, dim=1)
                 batch = argmax_depth.shape[0]
 
                 for i in range(batch):
                     filename = f"im{img_counter:04d}.png"
-
-                    # Salva immagine RGB
+                    # RGB
                     torchvision.utils.save_image(
-                        gathered_img[i],
+                        imgs[i],
                         os.path.join(final_img_dir, filename),
                         normalize=True, value_range=(-1, 1)
                     )
-
-                    # Salva maschera RGB
+                    # Mask RGB
                     rgb_mask = self.semantic_mask_to_rgb(argmax_depth[i].cpu().numpy())
-                    im = Image.fromarray(rgb_mask)
-                    im.save(os.path.join(final_mask_dir, filename))
+                    Image.fromarray(rgb_mask).save(os.path.join(final_mask_dir, filename))
 
                     img_counter += 1
 
         else:
-            # Comportamento normale durante il training
+            # Iterazioni normali: un solo batch e salvataggio per TensorBoard + PNG heatmap
             if img_name is None:
                 img_name = str(self.iter).zfill(6)
-
-            model_kwargs = {}
 
             images, intermediates = self.diffusion.p_sample_loop(
                 model=self.model,
                 shape=self.kwargs['shape'],
-                progress=True if get_rank() == 0 else False,
+                progress=(get_rank() == 0),
                 noise=self.kwargs['noise'],
                 return_intermediates=True,
                 model_kwargs=self.kwargs,
                 log_interval=self.diffusion.num_timesteps // 10
             )
 
-            gathered_images = all_gather(images)
-            gathered_img = torch.cat(gathered_images, dim=0)[:, :3, :, :]
-            gathered_masks = torch.cat(gathered_images, dim=0)[:, 3:, :, :]
-            softmax_output = F.softmax(gathered_masks, dim=1)
+            gathered = all_gather(images)
+            imgs = torch.cat(gathered, dim=0)[:, :3, :, :]
+            masks = torch.cat(gathered, dim=0)[:, 3:, :, :]
+            softmax_output = F.softmax(masks, dim=1)
+
+            # Salva heatmap in PNG
             if get_rank() == 0:
-                self.log_softmax_heatmaps(softmax_output)
+                self.save_png_heatmaps(softmax_output)
+
             argmax_depth = torch.argmax(softmax_output, dim=1)
             batch = argmax_depth.shape[0]
 
             if get_rank() == 0:
+                # salva immagine di esempio
                 torchvision.utils.save_image(
-                    gathered_img,
+                    imgs,
                     f'{self.sample_dir}samples_img_{img_name}.png',
                     normalize=True, value_range=(-1, 1),
                     nrow=self.max_images
                 )
-
+                # salva maschere
                 for i in range(batch):
                     rgb_mask = self.semantic_mask_to_rgb(argmax_depth[i].cpu().numpy())
-                    im = Image.fromarray(rgb_mask)
-                    im.save(f'{self.sample_mask_dir}samples_mask_{img_name}_{i}.png')
+                    Image.fromarray(rgb_mask).save(
+                        f'{self.sample_mask_dir}samples_mask_{img_name}_{i}.png'
+                    )
 
         self.model.train()
         synchronize()
-
 
     def log_schedule(self):
         if get_rank() == 0:
@@ -397,7 +429,6 @@ class Trainer:
             self.save_png_loss_curve()
             self.save_png_histogram_loss()
             self.save_png_grad_norm()
-            # il heatmap lo vedi via TensorBoard o aggiungi salvataggio specifico se serve
 
         # Rimuove checkpoint vecchi: conserva solo gli ultimi 2
         if self.iter >= self.save_ckpt_interval * 3:
